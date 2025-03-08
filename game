@@ -1,0 +1,91 @@
+import telebot
+import random
+import time
+import requests
+import sys
+
+# Handle missing SSL module error
+try:
+    import ssl
+except ModuleNotFoundError:
+    print("SSL module not found. Ensure your environment supports SSL.")
+    sys.exit(1)
+
+# Replace with your Telegram bot token
+TOKEN = "YOUR_BOT_TOKEN"
+bot = telebot.TeleBot(TOKEN, parse_mode=None)
+
+# Player database
+players = {}
+
+# Enemy types
+enemies = [
+    {"name": "Goblin", "hp": 10, "attack": 3},
+    {"name": "Orc", "hp": 20, "attack": 5},
+    {"name": "Dragon", "hp": 50, "attack": 10}
+]
+
+# Command to start the game
+@bot.message_handler(commands=['start', 'adventure'])
+def start_game(message):
+    user_id = message.chat.id
+    if user_id not in players:
+        players[user_id] = {"hp": 20, "attack": 5, "level": 1, "xp": 0}
+        bot.send_message(user_id, "Welcome to the adventure! Use /explore to find enemies.")
+    else:
+        bot.send_message(user_id, "You're already in the game! Use /explore to continue.")
+
+# Command to explore and find an enemy
+@bot.message_handler(commands=['explore'])
+def explore(message):
+    user_id = message.chat.id
+    if user_id not in players:
+        bot.send_message(user_id, "You need to start the adventure first! Use /start")
+        return
+    
+    enemy = random.choice(enemies)
+    players[user_id]["current_enemy"] = enemy.copy()
+    bot.send_message(user_id, f"You encountered a {enemy['name']}! It has {enemy['hp']} HP. Type /attack to fight!")
+
+# Command to attack the enemy
+@bot.message_handler(commands=['attack'])
+def attack(message):
+    user_id = message.chat.id
+    if user_id not in players or "current_enemy" not in players[user_id]:
+        bot.send_message(user_id, "You need to explore first! Use /explore")
+        return
+    
+    player = players[user_id]
+    enemy = player["current_enemy"]
+    
+    # Player attacks enemy
+    enemy["hp"] -= player["attack"]
+    bot.send_message(user_id, f"You hit the {enemy['name']} for {player['attack']} damage!")
+    
+    if enemy["hp"] <= 0:
+        bot.send_message(user_id, f"You defeated the {enemy['name']}! Gained 10 XP.")
+        player["xp"] += 10
+        level_up(user_id)
+        del player["current_enemy"]
+        return
+    
+    # Enemy attacks back
+    player["hp"] -= enemy["attack"]
+    bot.send_message(user_id, f"The {enemy['name']} hit you for {enemy['attack']} damage! You have {player['hp']} HP left.")
+    
+    if player["hp"] <= 0:
+        bot.send_message(user_id, "You died! Restart with /start.")
+        del players[user_id]
+
+# Function to handle leveling up
+def level_up(user_id):
+    player = players[user_id]
+    if player["xp"] >= 20:
+        player["level"] += 1
+        player["hp"] = 20 + (player["level"] * 5)
+        player["attack"] += 2
+        player["xp"] = 0
+        bot.send_message(user_id, f"Level up! You are now Level {player['level']} with {player['hp']} HP and {player['attack']} attack power!")
+
+# Run the bot
+bot.infinity_polling()
